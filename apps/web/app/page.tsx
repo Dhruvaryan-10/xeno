@@ -16,6 +16,7 @@ import AICopilotCard from "@/components/ai-copilot-card";
 import CampaignTemplates from "@/components/campaign-templates";
 import Customer360Modal from "@/components/customer-360-modal";
 
+
 const defaultPrompt = "Find customers who spent over INR 5000 and have not purchased in 60 days.";
 const emptyCopy: CampaignCopy = { title: "", subjectLine: "", messageBody: "", cta: "" };
 
@@ -34,6 +35,15 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [customer360Open, setCustomer360Open] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
+  type Section =
+  | "Dashboard"
+  | "Audiences"
+  | "Campaigns"
+  | "Analytics"
+  | "AI Insights";
+
+const [activeSection, setActiveSection] =
+  useState<Section>("Dashboard");
 
   async function refresh() {
     const [nextOverview, nextSegments] = await Promise.all([api.overview(), api.segmentHistory()]);
@@ -142,7 +152,12 @@ export default function DashboardPage() {
       </div>
 
       <div className="relative lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
-        <Sidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
+        <Sidebar
+  activeSection={activeSection}
+  setActiveSection={setActiveSection}
+  mobileOpen={sidebarOpen}
+  onMobileClose={() => setSidebarOpen(false)}
+/>
         <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <section className="space-y-5">
           <AICopilotCard
