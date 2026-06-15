@@ -19,6 +19,7 @@ import Customer360Modal from "@/components/customer-360-modal";
 const defaultPrompt = "Find customers who spent over INR 5000 and have not purchased in 60 days.";
 const emptyCopy: CampaignCopy = { title: "", subjectLine: "", messageBody: "", cta: "" };
 
+
 export default function DashboardPage() {
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [preview, setPreview] = useState<AudiencePreview | null>(null);

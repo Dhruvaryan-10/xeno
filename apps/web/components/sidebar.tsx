@@ -22,20 +22,15 @@ const navItems = [
   { label: "AI Insights", icon: Sparkles }
 ];
 
-export type Section = "Dashboard" | "Audiences" | "Campaigns" | "Analytics" | "AI Insights";
-
 export function Sidebar({
-  activeSection,
-  setActiveSection,
   mobileOpen,
   onMobileClose
 }: {
-  activeSection: Section;
-  setActiveSection: (s: Section) => void;
   mobileOpen: boolean;
   onMobileClose: () => void;
 }) {
   const [collapsed, setCollapsed] = React.useState(false);
+  const [active, setActive] = React.useState("Dashboard");
 
   return (
     <>
@@ -86,15 +81,12 @@ export function Sidebar({
         <div className="space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeSection === item.label;
+            const isActive = active === item.label;
             return (
               <button
                 key={item.label}
                 type="button"
-                onClick={() => {
-                  setActiveSection(item.label as Section);
-                  onMobileClose();
-                }}
+                onClick={() => setActive(item.label)}
                 className={cn(
                   "group flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-colors hover:bg-primary/10 hover:text-primary",
                   collapsed && "justify-center px-2",
