@@ -5,7 +5,11 @@ import { router } from "./routes.js";
 
 const app = express();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: "*"
+  })
+);
 app.use(express.json({ limit: "2mb" }));
 app.use("/api", router);
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
