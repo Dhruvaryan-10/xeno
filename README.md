@@ -47,8 +47,8 @@ npm run db:seed
 Services:
 
 - Web: `http://localhost:3000`
-- CRM API: `http://localhost:4000`
-- Channel Service: `http://localhost:4100`
+- CRM API: `https://xeno-assignment-vbo2.onrender.com`
+- Channel Service: `https://xeno-assignment-1-usxp.onrender.com`
 
 ## Gemini
 
