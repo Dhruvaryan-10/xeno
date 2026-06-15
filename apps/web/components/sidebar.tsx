@@ -21,11 +21,21 @@ const navItems = [
   { label: "Analytics", icon: BarChart3 },
   { label: "AI Insights", icon: Sparkles }
 ];
+type Section =
+  | "Dashboard"
+  | "Audiences"
+  | "Campaigns"
+  | "Analytics"
+  | "AI Insights";
 
 export function Sidebar({
+  activeSection,
+  setActiveSection,
   mobileOpen,
   onMobileClose
 }: {
+  activeSection: Section;
+  setActiveSection: (section: Section) => void;
   mobileOpen: boolean;
   onMobileClose: () => void;
 }) {
