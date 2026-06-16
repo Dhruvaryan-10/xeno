@@ -4,6 +4,7 @@ const API_URL =
 
 export type Channel = "WHATSAPP" | "SMS" | "EMAIL" | "RCS";
 
+console.log("API_URL =", API_URL);
 export type AudiencePreview = {
   filters: Record<string, unknown>;
   audienceSize: number;
