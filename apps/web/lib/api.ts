@@ -1,4 +1,6 @@
-const API_URL = process.env.NEXT_PUBLIC_CRM_API_URL ?? "https://xeno-assignment-vbo2.onrender.com";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ??
+  "https://xeno-assignment-vb02.onrender.com";
 
 export type Channel = "WHATSAPP" | "SMS" | "EMAIL" | "RCS";
 
