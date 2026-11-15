@@ -1,399 +1,197 @@
-"use client";
+import Link from "next/link";
+import { ArrowDown, Mail, MessageCircle, MessageSquareText, Smartphone, Sparkles } from "lucide-react";
+import { ActivityRings } from "@/components/activity-rings";
+import { BrandMark } from "@/components/brand-mark";
+import { HoldButton } from "@/components/hold-button";
+import { Reveal } from "@/components/reveal";
+import { HeroPhone } from "@/components/landing/hero-phone";
 
-import { useEffect, useMemo, useState } from "react";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Bot, ChartNoAxesCombined, Menu, Rocket, Send, Sparkles, Users } from "lucide-react";
-import { api, type AudiencePreview, type CampaignCopy, type Recommendation } from "@/lib/api";
-import { inr } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Sidebar } from "@/components/sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
-import AICopilotCard from "@/components/ai-copilot-card";
-import CampaignTemplates from "@/components/campaign-templates";
-import Customer360Modal from "@/components/customer-360-modal";
+const steps = [
+  { title: "Describe who", body: "Write the audience the way you’d say it to a colleague. It’s turned into filters you can read." },
+  { title: "Shape the message", body: "A first draft is written for that audience. Edit every word and see it as the customer will." },
+  { title: "Send and learn", body: "Hold to send on the recommended channel, then watch delivered, opened and bought fill in." }
+];
 
+const channels = [
+  { icon: MessageCircle, name: "WhatsApp" },
+  { icon: MessageSquareText, name: "SMS" },
+  { icon: Mail, name: "Email" },
+  { icon: Smartphone, name: "RCS" }
+];
 
-const defaultPrompt = "Find customers who spent over INR 5000 and have not purchased in 60 days.";
-const emptyCopy: CampaignCopy = { title: "", subjectLine: "", messageBody: "", cta: "" };
+const tile = "rounded-[2rem] bg-surface p-6 sm:p-8";
 
-
-export default function DashboardPage() {
-  const [prompt, setPrompt] = useState(defaultPrompt);
-  const [preview, setPreview] = useState<AudiencePreview | null>(null);
-  const [copy, setCopy] = useState<CampaignCopy>(emptyCopy);
-  const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
-  const [overview, setOverview] = useState<any>(null);
-  const [segments, setSegments] = useState<any[]>([]);
-  const [activeCampaignId, setActiveCampaignId] = useState<string>("");
-  const [insights, setInsights] = useState<any>(null);
-  const [busy, setBusy] = useState<string>("");
-  const [toast, setToast] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [customer360Open, setCustomer360Open] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
-  type Section =
-  | "Dashboard"
-  | "Audiences"
-  | "Campaigns"
-  | "Analytics"
-  | "AI Insights";
-
-const [activeSection, setActiveSection] =
-  useState<Section>("Dashboard");
-
-  async function refresh() {
-    const [nextOverview, nextSegments] = await Promise.all([api.overview(), api.segmentHistory()]);
-    setOverview(nextOverview);
-    setSegments(nextSegments);
-    if (!activeCampaignId && nextOverview.campaigns?.[0]?.id) setActiveCampaignId(nextOverview.campaigns[0].id);
-  }
-
-  useEffect(() => {
-    void refresh();
-    const interval = setInterval(() => void refresh(), 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  async function buildAudience() {
-    setBusy("audience");
-    setToast("");
-    try {
-      const nextPreview = await api.previewAudience(prompt);
-      setPreview(nextPreview);
-      const [nextCopy, nextRecommendation] = await Promise.all([
-        api.generateCopy({ prompt, audienceSize: nextPreview.audienceSize, averageSpend: nextPreview.averageSpend }),
-        api.recommendChannel({ prompt, audienceSize: nextPreview.audienceSize, averageSpend: nextPreview.averageSpend })
-      ]);
-      setCopy(nextCopy);
-      setRecommendation(nextRecommendation);
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : "Audience generation failed.");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function launch() {
-    if (!preview || !recommendation) return;
-    setBusy("launch");
-    try {
-      const campaign = await api.createCampaign({
-        audiencePrompt: prompt,
-        filters: preview.filters,
-        audienceSize: preview.audienceSize,
-        estimatedRevenue: preview.estimatedRevenue,
-        title: copy.title,
-        subjectLine: copy.subjectLine,
-        messageBody: copy.messageBody,
-        cta: copy.cta,
-        channel: recommendation.channel,
-        confidence: recommendation.confidence,
-        aiReasoning: recommendation.reasoning
-      });
-      const result = await api.launchCampaign(campaign.id);
-      setActiveCampaignId(campaign.id);
-      setToast(`Campaign launched to ${result.sent} customers. Live events will stream into analytics.`);
-      await refresh();
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : "Launch failed.");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function loadInsights(id: string) {
-    if (!id) return;
-    setActiveCampaignId(id);
-    setInsights(await api.insights(id));
-  }
-
-  const metrics = overview?.statusCounts ?? {};
-  const funnel = useMemo(
-    () => [
-      { name: "Sent", value: (metrics.SENT ?? 0) + (metrics.DELIVERED ?? 0) + (metrics.OPENED ?? 0) + (metrics.CLICKED ?? 0) + (metrics.CONVERTED ?? 0) },
-      { name: "Delivered", value: metrics.DELIVERED ?? 0 },
-      { name: "Opened", value: metrics.OPENED ?? 0 },
-      { name: "Clicked", value: metrics.CLICKED ?? 0 },
-      { name: "Converted", value: metrics.CONVERTED ?? 0 }
-    ],
-    [metrics]
-  );
-
-    // AI Copilot card calculations
-    const recoverableRevenue = (overview?.campaigns ?? []).reduce((sum: number, c: any) => sum + (c?.estimatedRevenue ?? 0), 0);
-    const activeCampaigns = (overview?.campaigns ?? []).filter((c: any) => c?.status === "SENDING" || c?.status === "SENT").length;
-    const audienceOpportunities = segments?.length ?? 0;
-    const suggestedAction = recommendation ? `Launch ${recommendation.channel} ${recommendation.channel === "WHATSAPP" ? "win-back" : "re-engagement"} campaign for inactive VIP customers.` : "Launch WhatsApp win-back campaign for inactive VIP customers.";
-    const totalEvents = Object.values(metrics).reduce((s: number, v: any) => s + (v ?? 0), 0) || 1;
-    const predictedConversionRate = Math.round(((metrics.CONVERTED ?? 0) / totalEvents) * 100) || 18;
-
+export default function Landing() {
   return (
-    <main className="min-h-screen">
-      <div className="border-b bg-card/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
-          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="Open sidebar">
-            <Menu className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold">Xeno AI Campaign Copilot</h1>
-              <p className="text-sm text-muted-foreground">Audience intelligence, launch orchestration, and AI performance strategy.</p>
-            </div>
-          </div>
-          <ThemeToggle />
+    <div className="bg-bg">
+      <header className="fixed inset-x-0 top-0 z-30 bg-[#1D1842]/70 pt-[env(safe-area-inset-top)] text-white backdrop-blur-xl backdrop-saturate-150">
+        <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between px-4 sm:px-6 lg:px-10">
+          <Link href="/" className="flex items-center gap-2.5 font-semibold">
+            <BrandMark />
+            Campaign Copilot
+          </Link>
+          <nav aria-label="Page" className="hidden items-center gap-8 text-sm text-white/75 md:flex">
+            <a href="#features" className="hover:text-white">
+              Features
+            </a>
+            <a href="#how" className="hover:text-white">
+              How it works
+            </a>
+            <a href="#install" className="hover:text-white">
+              Install
+            </a>
+          </nav>
+          <Link href="/app" className="inline-flex h-10 items-center rounded-full bg-[#FF6B5E] px-5 text-sm font-semibold text-[#1D1842] hover:bg-[#ff8378]">
+            Open the app
+          </Link>
         </div>
-      </div>
+      </header>
 
-      <div className="relative lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
-        <Sidebar
-  activeSection={activeSection}
-  setActiveSection={setActiveSection}
-  mobileOpen={sidebarOpen}
-  onMobileClose={() => setSidebarOpen(false)}
-/>
-        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <section className="space-y-5">
-          <AICopilotCard
-            recoverableRevenue={recoverableRevenue}
-            activeCampaigns={activeCampaigns}
-            audienceOpportunities={audienceOpportunities}
-            suggestedAction={suggestedAction}
-            predictedConversionRate={predictedConversionRate}
-          />
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>AI Audience Builder</CardTitle>
-                <p className="mt-1 text-sm text-muted-foreground">Describe the segment in natural language.</p>
+      <main>
+        {/* Hero */}
+        <section className="relative overflow-hidden bg-[#1D1842] text-white">
+          <div className="mx-auto grid min-h-[100svh] max-w-[90rem] items-center gap-6 px-4 pb-10 pt-24 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:px-10 lg:pt-16">
+            <div className="relative z-10">
+              <p className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-3 py-1.5 text-sm text-[#FDA1A2] ring-1 ring-white/10">
+                <Sparkles className="h-4 w-4" aria-hidden />
+                AI campaigns for online stores
+              </p>
+              <h1 className="mt-6 text-[3rem] font-bold leading-[0.98] tracking-[-0.045em] sm:text-7xl xl:text-[5.75rem]">
+                Say who.
+                <br />
+                We’ll reach them.
+              </h1>
+              <p className="mt-7 max-w-[32rem] text-lg leading-relaxed text-[#C9C4E0]">
+                Describe the customers you want back in plain words. Copilot finds them, writes the message, sends it where they read, and shows you who bought.
+              </p>
+              <div className="mt-9 flex flex-wrap items-center gap-3">
+                <Link href="/app" className="inline-flex h-12 items-center rounded-full bg-[#FF6B5E] px-7 text-base font-semibold text-[#1D1842] transition-transform hover:bg-[#ff8378] active:scale-[0.97]">
+                  Start a campaign
+                </Link>
+                <a href="#features" className="inline-flex h-12 items-center gap-2 rounded-full px-5 text-base font-semibold text-white ring-1 ring-white/20 hover:bg-white/[0.06]">
+                  See the features
+                  <ArrowDown className="h-4 w-4" aria-hidden />
+                </a>
               </div>
-              <Badge>Gemini-ready</Badge>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} />
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={buildAudience} disabled={busy === "audience"}>
-                  <Bot className="h-4 w-4" />
-                  {busy === "audience" ? "Thinking" : "Build audience"}
-                </Button>
-                {toast ? <span className="self-center text-sm text-muted-foreground">{toast}</span> : null}
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <MetricCard icon={<Users className="h-4 w-4" />} label="Audience" value={preview ? preview.audienceSize.toLocaleString("en-IN") : "0"} />
-            <MetricCard icon={<ChartNoAxesCombined className="h-4 w-4" />} label="Average spend" value={preview ? inr(preview.averageSpend) : inr(0)} />
-            <MetricCard icon={<Rocket className="h-4 w-4" />} label="Estimated revenue" value={preview ? inr(preview.estimatedRevenue) : inr(0)} />
-          </div>
-
-          <div className="mt-4">
-            <CampaignTemplates setPrompt={setPrompt} setCopy={(c) => setCopy(c)} />
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>AI Campaign Generator</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <LabeledInput label="Campaign title" value={copy.title} onChange={(value) => setCopy({ ...copy, title: value })} />
-              <LabeledInput label="Subject line" value={copy.subjectLine} onChange={(value) => setCopy({ ...copy, subjectLine: value })} />
-              <label className="md:col-span-2">
-                <span className="mb-2 block text-sm font-medium">Message body</span>
-                <Textarea value={copy.messageBody} onChange={(event) => setCopy({ ...copy, messageBody: event.target.value })} className="min-h-32" />
-              </label>
-              <LabeledInput label="CTA" value={copy.cta} onChange={(value) => setCopy({ ...copy, cta: value })} />
-              <div className="rounded-lg border p-4">
-                <p className="text-sm font-medium">Channel recommendation</p>
-                <div className="mt-3 flex items-center gap-2">
-                  <Badge className="border-primary text-foreground">{recommendation?.channel ?? "Pending"}</Badge>
-                  <span className="text-sm text-muted-foreground">{recommendation ? `${Math.round(recommendation.confidence * 100)}% confidence` : ""}</span>
-                </div>
-                <p className="mt-3 text-sm text-muted-foreground">{recommendation?.reasoning ?? "Build an audience to get a recommendation."}</p>
-              </div>
-              <Button onClick={launch} disabled={!preview || !copy.title || busy === "launch"} className="md:col-span-2">
-                <Send className="h-4 w-4" />
-                {busy === "launch" ? "Launching" : "Launch campaign"}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Audience Sample</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <table className="w-full min-w-[620px] text-sm">
-                <thead className="text-left text-muted-foreground">
-                  <tr>
-                    <th className="py-2">Customer</th>
-                    <th>City</th>
-                    <th>Age</th>
-                    <th>Spend</th>
-                    <th>Preferred</th>
-                  </tr>
-                </thead>
-                <tbody>
-                                  {(preview?.sampleCustomers ?? []).map((customer) => (
-                    <tr
-                      key={customer.id}
-                      className="border-t cursor-pointer hover:bg-muted/50"
-                      onClick={() => {
-                        setSelectedCustomer(customer);
-                        setCustomer360Open(true);
-                      }}
-                    >
-                      <td className="py-3 font-medium">{customer.name}</td>
-                      <td>{customer.city}</td>
-                      <td>{customer.age}</td>
-                      <td>{inr(customer.totalSpend)}</td>
-                      <td>{customer.preferredChannel}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-          <Customer360Modal open={customer360Open} onClose={() => setCustomer360Open(false)} customer={selectedCustomer} />
-        </section>
-
-        <aside className="space-y-5">
-          <Card>
-            <CardHeader>
-              <CardTitle>Campaign Analytics</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid grid-cols-2 gap-3">
-                {["DELIVERED", "FAILED", "OPENED", "CLICKED", "CONVERTED"].map((status) => (
-                  <div key={status} className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground">{status}</p>
-                    <p className="mt-1 text-2xl font-semibold">{metrics[status] ?? 0}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={funnel}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" fontSize={12} />
-                    <YAxis fontSize={12} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="value" stroke="#0f9f8d" fill="#0f9f8d" fillOpacity={0.2} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={overview?.chart ?? []}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" fontSize={12} />
-                    <YAxis fontSize={12} />
-                    <Tooltip />
-                    <Bar dataKey="opened" fill="#0f9f8d" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="clicked" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="converted" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>AI Insight Engine</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <select
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                value={activeCampaignId}
-                onChange={(event) => void loadInsights(event.target.value)}
-              >
-                <option value="">Select campaign</option>
-                {(overview?.campaigns ?? []).map((campaign: any) => (
-                  <option key={campaign.id} value={campaign.id}>
-                    {campaign.title}
-                  </option>
-                ))}
-              </select>
-              <Button variant="secondary" onClick={() => void loadInsights(activeCampaignId)} disabled={!activeCampaignId}>
-                <Bot className="h-4 w-4" />
-                Analyze performance
-              </Button>
-              <p className="text-sm text-muted-foreground">{insights?.summary ?? "Launch or select a campaign to generate recommendations."}</p>
-              <ul className="space-y-2 text-sm">
-                {(insights?.recommendations ?? []).map((item: string) => (
-                  <li key={item} className="rounded-md bg-muted p-3">{item}</li>
+              <ul className="mt-12 flex flex-wrap gap-x-6 gap-y-3 text-sm text-[#C9C4E0]" aria-label="Channels">
+                {channels.map((channel) => (
+                  <li key={channel.name} className="flex items-center gap-2">
+                    <channel.icon className="h-4 w-4 text-[#FDA1A2]" aria-hidden />
+                    {channel.name}
+                  </li>
                 ))}
               </ul>
-            </CardContent>
-          </Card>
+            </div>
+            <HeroPhone />
+          </div>
+        </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Activity Feed</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {(overview?.events ?? []).slice(0, 8).map((event: any) => (
-                <div key={event.id} className="flex items-start justify-between gap-3 rounded-lg border p-3 text-sm">
-                  <div>
-                    <p className="font-medium">{event.status}</p>
-                    <p className="text-muted-foreground">{event.communication?.customer?.name} · {event.campaign?.title}</p>
+        {/* Features as live pieces of the product */}
+        <section id="features" className="mx-auto max-w-[90rem] scroll-mt-20 px-4 py-20 sm:px-6 lg:px-10 lg:py-28">
+          <Reveal><h2 className="max-w-[18ch] text-4xl font-bold leading-[1.05] tracking-[-0.035em] sm:text-6xl">One sentence in. A campaign out.</h2></Reveal>
+          <div className="mt-12 grid gap-4 lg:grid-cols-6">
+            <Reveal as="article" className={`${tile} lg:col-span-4`}>
+              <h3 className="text-sm font-semibold text-accent">Audience from a sentence</h3>
+              <p className="mt-4 text-2xl font-semibold leading-snug tracking-tight sm:text-4xl">“Customers in Mumbai who spent over ₹20,000 and haven’t ordered in 60 days”</p>
+              <ul className="mt-6 flex flex-wrap gap-2">
+                {["Lives in Mumbai", "Spent over ₹20,000", "No purchase in 60+ days"].map((chip) => (
+                  <li key={chip} className="rounded-full bg-accent/10 px-3.5 py-1.5 text-sm font-medium text-accent">
+                    {chip}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-6 text-muted">Read back to you as plain filters, so you always know exactly who you’re messaging.</p>
+            </Reveal>
+
+            <Reveal as="article" delay={0.08} className={`${tile} flex flex-col lg:col-span-2`}>
+              <h3 className="text-sm font-semibold text-accent">Hold to send</h3>
+              <p className="mt-4 text-muted">No accidental sends. Press and hold to confirm. Try it.</p>
+              <div className="mt-auto pt-8">
+                <HoldButton completeLabel="Sent" resetAfter={1800} className="w-full">
+                  Hold to send
+                </HoldButton>
+              </div>
+            </Reveal>
+
+            <Reveal as="article" delay={0.16} className={`${tile} lg:col-span-3`}>
+              <h3 className="text-sm font-semibold text-accent">Results that fill in live</h3>
+              <div className="mt-8">
+                <ActivityRings
+                  size={200}
+                  total={480}
+                  rings={[
+                    { label: "Delivered", value: 451, color: "rgb(var(--ring-1))" },
+                    { label: "Opened", value: 341, color: "rgb(var(--ring-2))" },
+                    { label: "Bought", value: 77, color: "rgb(var(--ring-3))" }
+                  ]}
+                />
+              </div>
+              <p className="mt-6 text-xs text-muted">Example from a simulated campaign to 480 customers.</p>
+            </Reveal>
+
+            <Reveal as="article" delay={0.24} className="rounded-[2rem] bg-[#1D1842] p-6 text-white sm:p-8 lg:col-span-3 dark:bg-surface">
+              <h3 className="text-sm font-semibold text-[#FDA1A2]">Written for you, edited by you</h3>
+              <div className="mt-6 max-w-sm rounded-2xl rounded-bl-md bg-white/[0.08] p-4 leading-relaxed ring-1 ring-white/10">
+                Hi <span className="rounded bg-[#FF6B5E]/20 px-1 text-[#FDA1A2]">Aarav</span>, it’s been a while. Your favourites are back in stock, and delivery is free this week.
+              </div>
+              <p className="mt-6 text-[#C9C4E0]">Each customer’s name is filled in for them. The channel is recommended, with the reason shown, and you can switch it in one tap.</p>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* How it works: a real sequence */}
+        <section id="how" className="scroll-mt-20 bg-surface">
+          <div className="mx-auto max-w-[90rem] px-4 py-20 sm:px-6 lg:px-10 lg:py-28">
+            <Reveal><h2 className="max-w-[16ch] text-4xl font-bold leading-[1.05] tracking-[-0.035em] sm:text-6xl">Three steps. A few minutes.</h2></Reveal>
+            <ol className="mt-14 grid gap-10 md:grid-cols-3 md:gap-6">
+              {steps.map((step, index) => (
+                <Reveal as="li" key={step.title} delay={index * 0.12} className="relative">
+                  <div className="flex items-center gap-4">
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent text-lg font-bold text-accent-ink">{index + 1}</span>
+                    {index < steps.length - 1 ? <span className="hidden h-px flex-1 bg-rule md:block" aria-hidden /> : null}
                   </div>
-                  <span className="text-xs text-muted-foreground">{new Date(event.occurredAt).toLocaleTimeString()}</span>
-                </div>
+                  <h3 className="mt-6 text-2xl font-bold tracking-tight">{step.title}</h3>
+                  <p className="mt-2 max-w-sm leading-relaxed text-muted">{step.body}</p>
+                </Reveal>
               ))}
-            </CardContent>
-          </Card>
+            </ol>
+          </div>
+        </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Segment History</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {segments.slice(0, 5).map((segment) => (
-                <div key={segment.id} className="rounded-lg border p-3 text-sm">
-                  <p className="line-clamp-2 font-medium">{segment.prompt}</p>
-                  <p className="mt-1 text-muted-foreground">{segment.audienceSize} customers · {inr(segment.estimatedRevenue)}</p>
+        {/* Install */}
+        <section id="install" className="scroll-mt-20 px-4 py-20 sm:px-6 lg:px-10">
+          <div className="relative mx-auto max-w-[90rem] overflow-hidden rounded-[2.5rem] bg-[#1D1842] px-6 py-14 text-white sm:px-12 lg:py-20">
+            <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-[#EF3B33]/30 blur-[100px]" aria-hidden />
+            <div className="relative grid gap-10 lg:grid-cols-2 lg:items-end">
+              <div>
+                <Reveal><h2 className="max-w-[14ch] text-4xl font-bold leading-[1.05] tracking-[-0.035em] sm:text-6xl">Put it on your Home Screen.</h2></Reveal>
+                <p className="mt-5 max-w-[30rem] text-lg leading-relaxed text-[#C9C4E0]">Install Copilot like an app. It opens full screen with its own icon.</p>
+                <Link href="/app" className="mt-8 inline-flex h-12 items-center rounded-full bg-[#FF6B5E] px-7 text-base font-semibold text-[#1D1842] hover:bg-[#ff8378]">
+                  Open the app
+                </Link>
+              </div>
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-[1.5rem] bg-white/[0.07] p-6 ring-1 ring-white/10">
+                  <dt className="font-semibold">iPhone and iPad</dt>
+                  <dd className="mt-2 text-[#C9C4E0]">In Safari, tap Share, then Add to Home Screen.</dd>
                 </div>
-              ))}
-            </CardContent>
-            </Card>
+                <div className="rounded-[1.5rem] bg-white/[0.07] p-6 ring-1 ring-white/10">
+                  <dt className="font-semibold">Android</dt>
+                  <dd className="mt-2 text-[#C9C4E0]">In Chrome, tap the menu, then Install app.</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </section>
+      </main>
 
-            
-        </aside>
-      </div>
+      <footer className="mx-auto flex max-w-[90rem] flex-wrap items-center justify-between gap-4 px-4 pb-10 text-sm text-muted sm:px-6 lg:px-10">
+        <span className="flex items-center gap-2">
+          <BrandMark className="h-5 w-5" />
+          Campaign Copilot
+        </span>
+        <span>Next.js, Express and Gemini. Demo data, simulated delivery.</span>
+      </footer>
     </div>
-</main>
   );
 }
-
-
-function MetricCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-4 p-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-primary">{icon}</div>
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="text-2xl font-semibold">{value}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function LabeledInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <label>
-      <span className="mb-2 block text-sm font-medium">{label}</span>
-      <Input value={value} onChange={(event) => onChange(event.target.value)} />
-    </label>
-  );
-}
-

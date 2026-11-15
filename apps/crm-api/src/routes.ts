@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { env } from "./env.js";
 import { generateCampaignCopy, generateInsights, parseAudiencePrompt, recommendChannel } from "./lib/ai.js";
+import { verifySignature } from "./lib/security.js";
 import { Channel, CommunicationStatus, store, type CommunicationStatus as CommunicationStatusType } from "./store.js";
 
 export const router = Router();
@@ -120,15 +121,19 @@ router.post("/campaigns/:id/launch", async (req, res, next) => {
     store.saveCommunications();
     store.updateCampaign(campaign.id, { status: "SENDING", launchedAt: new Date().toISOString() });
 
-    await axios.post(`${env.channelServiceUrl}/communications/batch`, {
-      callbackUrl: `${env.crmPublicUrl}/api/webhooks/channel`,
-      communications: communications.map((communication) => ({
-        id: communication.id,
-        campaignId: campaign.id,
-        channel: communication.channel,
-        payload: communication.payload
-      }))
-    });
+    await axios.post(
+      `${env.channelServiceUrl}/communications/batch`,
+      {
+        callbackUrl: `${env.crmPublicUrl}/api/webhooks/channel`,
+        communications: communications.map((communication) => ({
+          id: communication.id,
+          campaignId: campaign.id,
+          channel: communication.channel,
+          payload: communication.payload
+        }))
+      },
+      { headers: env.channelSecret ? { Authorization: `Bearer ${env.channelSecret}` } : {} }
+    );
 
     res.json({ launched: true, sent: communications.length });
   } catch (error) {
@@ -137,12 +142,16 @@ router.post("/campaigns/:id/launch", async (req, res, next) => {
 });
 
 router.get("/campaigns", async (_req, res) => {
-  res.json(store.campaigns(20));
+  res.json(store.campaigns(20).map((campaign) => ({ ...campaign, counts: store.statusCounts(campaign.id) })));
 });
 
 router.get("/campaigns/:id", async (req, res, next) => {
   try {
-    res.json({ ...store.campaign(req.params.id), events: store.campaignEvents(req.params.id, 50) });
+    const events = store.campaignEvents(req.params.id, 30).map((event) => {
+      const communication = store.communication(event.communicationId);
+      return { ...event, customerName: communication ? store.customer(communication.customerId)?.name ?? null : null };
+    });
+    res.json({ ...store.campaign(req.params.id), counts: store.statusCounts(req.params.id), events });
   } catch (error) {
     next(error);
   }
@@ -182,6 +191,11 @@ router.get("/campaigns/:id/insights", async (req, res, next) => {
 
 router.post("/webhooks/channel", async (req, res, next) => {
   try {
+    const rawBody = (req as typeof req & { rawBody?: Buffer }).rawBody ?? Buffer.alloc(0);
+    if (env.channelSecret && !verifySignature(rawBody, req.header("x-signature"), env.channelSecret)) {
+      res.status(401).json({ error: "Invalid signature" });
+      return;
+    }
     const schema = z.object({
       communicationId: z.string(),
       campaignId: z.string(),

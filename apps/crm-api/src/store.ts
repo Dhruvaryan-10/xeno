@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { faker } from "@faker-js/faker";
+import { env } from "./env.js";
 import type { AudienceFilters } from "./types.js";
 
 export const Channel = {
@@ -107,7 +108,8 @@ type Database = {
   events: CommunicationEvent[];
 };
 
-const dataFile = resolve(process.env.XENO_DATA_FILE ?? "data/xeno-store.json");
+const dataFile = resolve(env.dataFile);
+const PERSIST_DELAY_MS = 250;
 const cities = ["Mumbai", "Delhi", "Bengaluru", "Hyderabad", "Chennai", "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Lucknow"];
 const categories = ["Fashion", "Beauty", "Electronics", "Home", "Grocery", "Fitness", "Travel", "Luxury"];
 const channels = Object.values(Channel);
@@ -123,13 +125,34 @@ function load(): Database {
     return JSON.parse(readFileSync(dataFile, "utf8")) as Database;
   }
   const seeded = seedDatabase();
-  persist(seeded);
+  writeNow(seeded);
   return seeded;
 }
 
-function persist(nextDb = db) {
+function writeNow(nextDb: Database) {
   mkdirSync(dirname(dataFile), { recursive: true });
-  writeFileSync(dataFile, JSON.stringify(nextDb, null, 2));
+  // Write to a temp file and rename, so a crash mid-write can't leave a half-written store.
+  const tmp = `${dataFile}.tmp`;
+  writeFileSync(tmp, JSON.stringify(nextDb));
+  renameSync(tmp, dataFile);
+}
+
+let persistTimer: NodeJS.Timeout | null = null;
+
+// Coalesce bursts (e.g. thousands of webhook callbacks) into one write every PERSIST_DELAY_MS.
+// shortcut: a single JSON file is fine for a demo; move to SQLite/Postgres for real traffic.
+function persist() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    writeNow(db);
+  }, PERSIST_DELAY_MS);
+}
+
+export function flushStore() {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = null;
+  writeNow(db);
 }
 
 function seedDatabase(): Database {
@@ -256,6 +279,12 @@ export const store = {
       occurredAt: now()
     };
     db.events.unshift(event);
+    // A campaign is sent once no message is still waiting on the provider.
+    const campaign = db.campaigns.find((item) => item.id === input.campaignId);
+    if (campaign?.status === "SENDING" && !db.communications.some((item) => item.campaignId === campaign.id && item.status === CommunicationStatus.QUEUED)) {
+      campaign.status = "SENT";
+      campaign.updatedAt = now();
+    }
     persist();
     return event;
   },
