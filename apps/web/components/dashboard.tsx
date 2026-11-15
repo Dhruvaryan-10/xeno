@@ -60,7 +60,7 @@ export function Dashboard({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="mt-1 text-muted">How your campaigns are doing, across your last {campaignCount || "few"} sends.</p>
+          <p className="mt-1 text-muted">{campaignCount === 0 ? "Send your first campaign to see results here." : campaignCount === 1 ? "How your campaign is doing." : `How your last ${campaignCount} campaigns are doing.`}</p>
         </div>
       </div>
       {error ? (
